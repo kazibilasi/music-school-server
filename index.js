@@ -2,6 +2,7 @@ const express = require('express');
 const app = express();
 require('dotenv').config()
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
 
@@ -9,10 +10,20 @@ const port = process.env.PORT || 5000;
 // music-school
 
 
-const corsOptions = {
-  origin: '*',
-  credentials: true,
-  optionSuccessStatus: 200,
+// const corsOptions = {
+//   origin: '*',
+//   credentials: true,
+//   optionSuccessStatus: 200,
+//   methods:['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+// }
+
+// app.use(cors(corsOptions))
+
+
+const corsOptions ={
+  origin:'*', 
+  credentials:true,
+  optionSuccessStatus:200,
 }
 
 app.use(cors(corsOptions))
@@ -20,18 +31,27 @@ app.use(express.json())
 
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
+  console.log('auth', authorization)
+
   if (!authorization) {
+    console.log('error 1')
     return res.status(401).send({ error: true, message: 'unauthorized access' })
   }
 const token = authorization.split(' ')[1];
-jwt.verifyJWT(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded)=>{
+console.log('token', token)
+jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded)=>{
   if(err){
-    return res.status(401).send({error: true, message:'forbidden access'})
+
+    console.log('error 2')
+    return res.status(403).send({error: true, message:'forbidden access'})
   }
   req.decoded =decoded;
   next();
 })
 }
+
+
+
 
 
 
@@ -51,9 +71,11 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     const musicClasses = client.db('MusicSchool').collection('Classes')
+    const AddClasses = client.db('MusicSchool').collection('addClasses')
     const musicInstructors = client.db('MusicSchool').collection('Instructors')
     const cartCollection = client.db('MusicSchool').collection('carts')
     const userCollection = client.db('MusicSchool').collection('users')
+
 
     const verifyAdmin = async(req, res, next)=>{
       const email = req.decoded.email;
@@ -73,12 +95,15 @@ async function run() {
       }
       next()
     }
+    
 
+ 
 
     app.post('/jwt', (req, res) => {
-      const user = req.body;
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET,{ expiresIn: '1h' });
+      const user = req.body.email;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
       res.send({ token })
+      
     })
 
     app.get('/Classes', async (req, res) => {
@@ -96,21 +121,48 @@ async function run() {
       const result = await cartCollection.insertOne(item)
       res.send(result)
     })
+    app.post('/addClasses', async (req, res) => {
+      const item = req.body;
+      const result = await AddClasses.insertOne(item)
+      res.send(result)
+    })
 
-    app.get('/carts', verifyJWT, async (req, res) => {
+    app.get('/carts',verifyJWT, async (req, res) => {
       const email = req.query.email;
+      // if (!email) {
+      //   res.send([]);
+      // }
+      if(email){
+        const query = { email: email };
+        const result = await cartCollection.find(query).toArray();
+        console.log(result)
+        return res.send(result);
+      }
+      res.send([])
+      // const decodedEmail= req.decoded.email;
+      // if(email!== decodedEmail){
+      //   return res.status(401).send({ error: true, message: 'unauthorized access' })
+      // }
+
+     
+    })
+    app.get('/addClasses',verifyJWT, async (req, res) => {
+      const email = req.query.email;
+      console.log(email)
       if (!email) {
         res.send([]);
       }
 
-      const decodedEmail= req.decoded.email;
-      if(email!== decodedEmail){
-        return res.status(401).send({ error: true, message: 'unauthorized access' })
-      }
+      // const decodedEmail= req.decoded.email;
+      // if(email!== decodedEmail){
+      //   return res.status(401).send({ error: true, message: 'unauthorized access' })
+      // }
 
-      const query = { email: email };
-      const result = await cartCollection.find(query).toArray();
+      const query = { instructorEmail : email };
+      const result = await AddClasses.find(query).toArray();
+      console.log(result)
       res.send(result);
+      
     })
 
     app.delete('/carts/:id', async (req, res) => {
@@ -132,7 +184,7 @@ async function run() {
       res.send(result);
     })
 
-    app.get('/users', verifyJWT, verifyAdmin,verifyInstructor, async (req, res) => {
+    app.get('/users',  async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result)
 
@@ -165,9 +217,10 @@ async function run() {
 
     app.get('/users/admin/:email',verifyJWT, async(req, res)=>{
       const email = req.params.email;
-      if(req.decoded.email !== email){
-        res.send({admin:false})
-      }
+
+      // if(req.decoded.email !== email){
+      //   res.send({admin:false})
+      // }
 
       const query = { email: email}
       const user = await userCollection.findOne(query);
@@ -176,9 +229,9 @@ async function run() {
     })
     app.get('/users/instructor/:email',verifyJWT, async(req, res)=>{
       const email = req.params.email;
-      if(req.decoded.email !== email){
-        res.send({instructor:false})
-      }
+      // if(req.decoded.email !== email){
+      //   res.send({instructor:false})
+      // }
 
       const query = { email: email}
       const user = await userCollection.findOne(query);
@@ -191,7 +244,7 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
