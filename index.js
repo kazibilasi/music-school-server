@@ -31,18 +31,17 @@ app.use(express.json())
 
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
-  console.log('auth', authorization)
+  
 
   if (!authorization) {
-    console.log('error 1')
+    
     return res.status(401).send({ error: true, message: 'unauthorized access' })
   }
 const token = authorization.split(' ')[1];
-console.log('token', token)
+
 jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded)=>{
   if(err){
 
-    console.log('error 2')
     return res.status(403).send({error: true, message:'forbidden access'})
   }
   req.decoded =decoded;
@@ -78,16 +77,18 @@ async function run() {
 
 
     const verifyAdmin = async(req, res, next)=>{
-      const email = req.decoded.email;
+      const email = req.decoded;
       const query = {email:email}
+    
       const user = await userCollection.findOne(query);
+      
       if(user?.role!== 'admin'){
         return res.status(403).send({error: true, message:'forbidden message'})
       }
       next()
     }
     const verifyInstructor = async(req, res, next)=>{
-      const email = req.decoded.email;
+      const email = req.decoded;
       const query = {email:email}
       const user = await userCollection.findOne(query);
       if(user?.role!== 'instructor'){
@@ -123,8 +124,22 @@ async function run() {
     })
     app.post('/addClasses', async (req, res) => {
       const item = req.body;
-      const result = await AddClasses.insertOne(item)
+      const result = await musicClasses.insertOne(item)
       res.send(result)
+    })
+
+    app.patch('/addClasses/:id',async(req, res)=>{
+      const id = req.params.id;
+      const query={_id : new ObjectId(id)}
+      const body = req.body;
+      const updateDoc = {
+        $set: {
+          status: body.status,
+        }
+      };
+      const result = await musicClasses.updateOne(query, updateDoc);
+      res.send(result)
+
     })
 
     app.get('/carts',verifyJWT, async (req, res) => {
@@ -135,7 +150,7 @@ async function run() {
       if(email){
         const query = { email: email };
         const result = await cartCollection.find(query).toArray();
-        console.log(result)
+        
         return res.send(result);
       }
       res.send([])
@@ -148,7 +163,6 @@ async function run() {
     })
     app.get('/addClasses',verifyJWT, async (req, res) => {
       const email = req.query.email;
-      console.log(email)
       if (!email) {
         res.send([]);
       }
@@ -159,8 +173,7 @@ async function run() {
       // }
 
       const query = { instructorEmail : email };
-      const result = await AddClasses.find(query).toArray();
-      console.log(result)
+      const result = await musicClasses.find(query).toArray();
       res.send(result);
       
     })
@@ -169,6 +182,12 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await cartCollection.deleteOne(query);
+      res.send(result)
+    })
+    app.delete('/users/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await userCollection.deleteOne(query);
       res.send(result)
     })
 
@@ -184,7 +203,7 @@ async function run() {
       res.send(result);
     })
 
-    app.get('/users',  async (req, res) => {
+    app.get('/users',verifyJWT,  async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result)
 
@@ -215,7 +234,7 @@ async function run() {
     })
 
 
-    app.get('/users/admin/:email',verifyJWT, async(req, res)=>{
+    app.get('/users/admin/:email',verifyJWT,async(req, res)=>{
       const email = req.params.email;
 
       // if(req.decoded.email !== email){
